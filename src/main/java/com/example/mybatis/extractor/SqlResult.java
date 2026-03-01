@@ -116,7 +116,7 @@ public class SqlResult {
             sb.append("Parameters: ").append(parameters).append("\n");
         }
         if (parameterValues != null && !parameterValues.isEmpty()) {
-            sb.append("ParameterValues: ").append(parameterValues).append("\n");
+            sb.append("Parameter Values: ").append(parameterValues).append("\n");
         }
         return sb.toString();
     }

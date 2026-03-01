@@ -7,7 +7,6 @@ import com.example.mybatis.parameter.DummyParameterGenerator;
 import com.example.mybatis.parameter.NullParameterMap;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
-import org.apache.ibatis.mapping.ParameterMapping;
 import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.scripting.xmltags.DynamicSqlSource;
 import org.apache.ibatis.session.Configuration;
@@ -275,7 +274,7 @@ public class SqlExtractor {
         }
 
         results.sort(Comparator.comparing(SqlResult::getFullId)
-                .thenComparing(r -> r.getBranchPattern().ordinal()));
+                .thenComparing(r -> r.getBranchPattern() != null ? r.getBranchPattern().ordinal() : 0));
         return results;
     }
 
@@ -302,7 +301,7 @@ public class SqlExtractor {
         List<SqlResult> results = new ArrayList<>();
 
         // ALL_SET pattern (always produced)
-        Map<String, Object> allSetParams = new DummyParamMap();
+        Map<String, Object> allSetParams = createAllSetParams(ms);
         BoundSql allSetBoundSql = sqlSource.getBoundSql(allSetParams);
         String allSetRawSql = allSetBoundSql.getSql();
         String allSetFormattedSql = SqlFormatter.normalize(allSetRawSql);
@@ -338,6 +337,31 @@ public class SqlExtractor {
     }
 
     /**
+     * ALL_SETパターン用のダミーパラメータを生成する。
+     * ClasspathTypeResolverが設定されている場合はparameterTypeのクラス情報から
+     * 型に基づいたダミー値を生成し、DummyParamMapにマージする。
+     */
+    private Map<String, Object> createAllSetParams(MappedStatement ms) {
+        DummyParamMap params = new DummyParamMap();
+
+        if (typeResolver != null) {
+            Class<?> paramType = ms.getParameterMap().getType();
+            if (paramType != null && paramType != Object.class) {
+                try {
+                    Map<String, Object> typedParams = typeResolver.generateAllSetParams(paramType);
+                    params.putAll(typedParams);
+                } catch (Exception e) {
+                    // フォールバック: 型解決に失敗してもDummyParamMapで動作する
+                    System.err.println("Warning: Failed to resolve parameter type "
+                            + paramType.getName() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        return params;
+    }
+
+    /**
      * BoundSqlからパラメータ情報リストを抽出するヘルパー。
      */
     private List<SqlResult.ParameterInfo> extractParameterInfos(BoundSql boundSql) {
@@ -357,6 +381,10 @@ public class SqlExtractor {
         Map<String, Object> values = new LinkedHashMap<>();
         for (var pm : boundSql.getParameterMappings()) {
             String property = pm.getProperty();
+            // MyBatis内部のforeach変数（__frch_*）はユーザーに無意味なので除外
+            if (property.startsWith("__frch_")) {
+                continue;
+            }
             Object value = params.get(property);
             values.put(property, value);
         }

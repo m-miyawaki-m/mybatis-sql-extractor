@@ -1,28 +1,52 @@
 package com.example.mybatis.parameter;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.*;
 
-public class ClasspathTypeResolver {
+/**
+ * クラスパスから対象プロジェクトのクラスをロードし、フィールド情報を取得するリゾルバ。
+ * parameterType/resultTypeのクラスをリフレクションで解析し、
+ * 型に基づいた正確なダミーパラメータを生成する。
+ */
+public class ClasspathTypeResolver implements Closeable {
 
     private ClassLoader classLoader;
+    private URLClassLoader ownedClassLoader;
 
     public ClasspathTypeResolver() {
         this.classLoader = getClass().getClassLoader();
     }
 
+    /**
+     * 外部クラスパスを設定する。指定されたjar/classesディレクトリをURLClassLoaderで読み込む。
+     *
+     * @param classpathEntries クラスパスエントリのリスト（jarファイルまたはclassesディレクトリ）
+     */
     public void setClasspath(List<String> classpathEntries) {
         try {
+            // 以前のClassLoaderがあればクローズ
+            close();
             URL[] urls = new URL[classpathEntries.size()];
             for (int i = 0; i < classpathEntries.size(); i++) {
                 urls[i] = Path.of(classpathEntries.get(i)).toUri().toURL();
             }
-            this.classLoader = new URLClassLoader(urls, getClass().getClassLoader());
+            this.ownedClassLoader = new URLClassLoader(urls, getClass().getClassLoader());
+            this.classLoader = this.ownedClassLoader;
         } catch (Exception e) {
             System.err.println("Warning: Failed to set classpath: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (ownedClassLoader != null) {
+            ownedClassLoader.close();
+            ownedClassLoader = null;
         }
     }
 
