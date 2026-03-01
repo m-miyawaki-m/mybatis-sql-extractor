@@ -3,6 +3,7 @@ package com.example.mybatis.extractor;
 import com.example.mybatis.config.MyBatisConfigBuilder;
 import com.example.mybatis.formatter.SqlFormatter;
 import com.example.mybatis.parameter.DummyParameterGenerator;
+import com.example.mybatis.parameter.NullParameterMap;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.ParameterMapping;
@@ -192,5 +193,165 @@ public class SqlExtractor {
         public boolean containsKey(Object key) {
             return true; // 全てのキーが存在するように見せる
         }
+    }
+
+    // ========== Branch pattern extraction methods ==========
+
+    /**
+     * 指定されたMapper XMLファイルから全てのSQL文を分岐パターン別に抽出する。
+     * 動的SQLの場合はALL_SET（全条件ON）とALL_NULL（全条件OFF）の2パターンを生成する。
+     * 静的SQLの場合はALL_SETのみを生成する。
+     *
+     * @param mapperFile Mapper XMLファイル
+     * @return 分岐パターン付きSqlResultのリスト
+     * @throws IOException ファイル読み込みエラー
+     */
+    public List<SqlResult> extractAllWithBranches(File mapperFile) throws IOException {
+        MyBatisConfigBuilder branchConfigBuilder = new MyBatisConfigBuilder();
+        branchConfigBuilder.addMapper(mapperFile);
+        Configuration configuration = branchConfigBuilder.getConfiguration();
+        return extractFromConfigurationWithBranches(configuration);
+    }
+
+    /**
+     * 指定ディレクトリ内の全Mapper XMLファイルからSQLを分岐パターン別に抽出する。
+     *
+     * @param directory Mapper XMLファイルが格納されたディレクトリ
+     * @return 分岐パターン付きSqlResultのリスト
+     * @throws IOException ファイル読み込みエラー
+     */
+    public List<SqlResult> extractFromDirectoryWithBranches(File directory) throws IOException {
+        if (!directory.isDirectory()) {
+            throw new IllegalArgumentException("Not a directory: " + directory);
+        }
+
+        File[] xmlFiles = directory.listFiles((dir, name) -> name.endsWith(".xml"));
+        if (xmlFiles == null || xmlFiles.length == 0) {
+            return Collections.emptyList();
+        }
+
+        MyBatisConfigBuilder branchConfigBuilder = new MyBatisConfigBuilder();
+        for (File xmlFile : xmlFiles) {
+            try {
+                branchConfigBuilder.addMapper(xmlFile);
+            } catch (Exception e) {
+                System.err.println("Warning: Failed to parse " + xmlFile.getName() + ": " + e.getMessage());
+            }
+        }
+        return extractFromConfigurationWithBranches(branchConfigBuilder.getConfiguration());
+    }
+
+    /**
+     * Configurationに登録されたMappedStatementsからSQLを分岐パターン別に抽出する。
+     */
+    private List<SqlResult> extractFromConfigurationWithBranches(Configuration configuration) {
+        List<SqlResult> results = new ArrayList<>();
+        Set<String> processedIds = new HashSet<>();
+
+        for (Object obj : configuration.getMappedStatements()) {
+            if (!(obj instanceof MappedStatement)) {
+                continue;
+            }
+            MappedStatement ms = (MappedStatement) obj;
+
+            if (!processedIds.add(ms.getId())) {
+                continue;
+            }
+
+            try {
+                List<SqlResult> branchResults = extractWithBranches(ms);
+                results.addAll(branchResults);
+            } catch (Exception e) {
+                System.err.println("Warning: Failed to extract SQL from " + ms.getId() + ": " + e.getMessage());
+            }
+        }
+
+        results.sort(Comparator.comparing(SqlResult::getFullId)
+                .thenComparing(r -> r.getBranchPattern().ordinal()));
+        return results;
+    }
+
+    /**
+     * 単一のMappedStatementから分岐パターン別にSQL文を抽出する。
+     * DynamicSqlSourceの場合、ALL_SET/ALL_NULLの2パターンを試行する。
+     * 同一SQLが生成される場合はALL_SETのみに重複排除する。
+     */
+    private List<SqlResult> extractWithBranches(MappedStatement ms) {
+        String fullId = ms.getId();
+        String namespace = "";
+        String id = fullId;
+
+        int lastDot = fullId.lastIndexOf('.');
+        if (lastDot > 0) {
+            namespace = fullId.substring(0, lastDot);
+            id = fullId.substring(lastDot + 1);
+        }
+
+        String commandType = ms.getSqlCommandType().name();
+        SqlSource sqlSource = ms.getSqlSource();
+        boolean isDynamic = sqlSource instanceof DynamicSqlSource;
+
+        List<SqlResult> results = new ArrayList<>();
+
+        // ALL_SET pattern (always produced)
+        Map<String, Object> allSetParams = new DummyParamMap();
+        BoundSql allSetBoundSql = sqlSource.getBoundSql(allSetParams);
+        String allSetRawSql = allSetBoundSql.getSql();
+        String allSetFormattedSql = SqlFormatter.normalize(allSetRawSql);
+        List<SqlResult.ParameterInfo> allSetParamInfos = extractParameterInfos(allSetBoundSql);
+        Map<String, Object> allSetParamValues = collectParameterValues(allSetBoundSql, allSetParams);
+
+        results.add(new SqlResult(namespace, id, commandType, allSetFormattedSql,
+                allSetParamInfos, BranchPattern.ALL_SET, allSetParamValues));
+
+        // ALL_NULL pattern (only for DynamicSqlSource)
+        if (isDynamic) {
+            try {
+                Map<String, Object> allNullParams = new NullParameterMap();
+                BoundSql allNullBoundSql = sqlSource.getBoundSql(allNullParams);
+                String allNullRawSql = allNullBoundSql.getSql();
+                String allNullFormattedSql = SqlFormatter.normalize(allNullRawSql);
+
+                // Deduplicate: if ALL_NULL produces the same SQL as ALL_SET, skip it
+                if (!allNullFormattedSql.equals(allSetFormattedSql)) {
+                    List<SqlResult.ParameterInfo> allNullParamInfos = extractParameterInfos(allNullBoundSql);
+                    Map<String, Object> allNullParamValues = collectParameterValues(allNullBoundSql, allNullParams);
+
+                    results.add(new SqlResult(namespace, id, commandType, allNullFormattedSql,
+                            allNullParamInfos, BranchPattern.ALL_NULL, allNullParamValues));
+                }
+            } catch (Exception e) {
+                System.err.println("Warning: ALL_NULL extraction failed for " + fullId
+                        + " (e.g. foreach with null collection): " + e.getMessage());
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * BoundSqlからパラメータ情報リストを抽出するヘルパー。
+     */
+    private List<SqlResult.ParameterInfo> extractParameterInfos(BoundSql boundSql) {
+        return boundSql.getParameterMappings().stream()
+                .map(pm -> new SqlResult.ParameterInfo(
+                        pm.getProperty(),
+                        pm.getJavaType() != null ? pm.getJavaType().getSimpleName() : null,
+                        pm.getJdbcType() != null ? pm.getJdbcType().name() : null
+                ))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * BoundSqlのパラメータマッピングに基づき、使用されたパラメータ値を収集するヘルパー。
+     */
+    private Map<String, Object> collectParameterValues(BoundSql boundSql, Map<String, Object> params) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (var pm : boundSql.getParameterMappings()) {
+            String property = pm.getProperty();
+            Object value = params.get(property);
+            values.put(property, value);
+        }
+        return values;
     }
 }
