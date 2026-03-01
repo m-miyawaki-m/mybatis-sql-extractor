@@ -1,6 +1,7 @@
 package com.example.mybatis.extractor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Mapper XMLから抽出されたSQL文の結果を保持するデータクラス。
@@ -12,13 +13,23 @@ public class SqlResult {
     private final String sqlCommandType;
     private final String sql;
     private final List<ParameterInfo> parameters;
+    private final BranchPattern branchPattern;
+    private final Map<String, Object> parameterValues;
 
     public SqlResult(String namespace, String id, String sqlCommandType, String sql, List<ParameterInfo> parameters) {
+        this(namespace, id, sqlCommandType, sql, parameters, null, null);
+    }
+
+    public SqlResult(String namespace, String id, String sqlCommandType, String sql,
+                     List<ParameterInfo> parameters, BranchPattern branchPattern,
+                     Map<String, Object> parameterValues) {
         this.namespace = namespace;
         this.id = id;
         this.sqlCommandType = sqlCommandType;
         this.sql = sql;
         this.parameters = parameters;
+        this.branchPattern = branchPattern;
+        this.parameterValues = parameterValues;
     }
 
     public String getNamespace() {
@@ -43,6 +54,14 @@ public class SqlResult {
 
     public String getFullId() {
         return namespace + "." + id;
+    }
+
+    public BranchPattern getBranchPattern() {
+        return branchPattern;
+    }
+
+    public Map<String, Object> getParameterValues() {
+        return parameterValues;
     }
 
     /**
@@ -86,11 +105,18 @@ public class SqlResult {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("=== ").append(getFullId()).append(" ===\n");
+        sb.append("=== ").append(getFullId());
+        if (branchPattern != null) {
+            sb.append(" [").append(branchPattern.name()).append("]");
+        }
+        sb.append(" ===\n");
         sb.append("Type: ").append(sqlCommandType).append("\n");
         sb.append("SQL:\n  ").append(sql.replace("\n", "\n  ")).append("\n");
         if (parameters != null && !parameters.isEmpty()) {
             sb.append("Parameters: ").append(parameters).append("\n");
+        }
+        if (parameterValues != null && !parameterValues.isEmpty()) {
+            sb.append("ParameterValues: ").append(parameterValues).append("\n");
         }
         return sb.toString();
     }
