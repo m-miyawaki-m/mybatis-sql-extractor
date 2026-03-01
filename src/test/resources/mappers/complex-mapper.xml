@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.ComplexMapper">
+
+    <sql id="baseColumns">
+        u.id, u.name, u.email, u.department_id
+    </sql>
+
+    <!-- JOINを含む複雑なクエリ -->
+    <select id="selectUserWithDepartment" parameterType="map" resultType="map">
+        SELECT
+        <include refid="baseColumns"/>,
+        d.department_name
+        FROM users u
+        INNER JOIN departments d ON u.department_id = d.id
+        <where>
+            <if test="departmentId != null">
+                AND u.department_id = #{departmentId}
+            </if>
+            <if test="name != null">
+                AND u.name LIKE #{name}
+            </if>
+        </where>
+        ORDER BY u.id
+    </select>
+
+    <!-- サブクエリ + 動的SQL -->
+    <select id="selectUsersWithOrderCount" parameterType="map" resultType="map">
+        SELECT u.id, u.name,
+            (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count
+        FROM users u
+        <where>
+            <if test="minOrderCount != null">
+                AND (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) >= #{minOrderCount}
+            </if>
+            <if test="departmentId != null">
+                AND u.department_id = #{departmentId}
+            </if>
+        </where>
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- ネストした動的SQL -->
+    <select id="advancedSearch" parameterType="map" resultType="map">
+        SELECT
+        <include refid="baseColumns"/>
+        FROM users u
+        <where>
+            <if test="keyword != null">
+                AND (u.name LIKE #{keyword} OR u.email LIKE #{keyword})
+            </if>
+            <if test="departmentIds != null">
+                AND u.department_id IN
+                <foreach collection="departmentIds" item="deptId" open="(" separator="," close=")">
+                    #{deptId}
+                </foreach>
+            </if>
+            <choose>
+                <when test="sortBy == 'name'">
+                    <!-- nameでソート用の条件なし -->
+                </when>
+                <when test="isActive != null">
+                    AND u.active = #{isActive}
+                </when>
+                <otherwise>
+                    AND u.active = 1
+                </otherwise>
+            </choose>
+        </where>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'name'">
+                u.name ASC
+            </when>
+            <when test="sortBy == 'email'">
+                u.email ASC
+            </when>
+            <otherwise>
+                u.id ASC
+            </otherwise>
+        </choose>
+    </select>
+
+</mapper>

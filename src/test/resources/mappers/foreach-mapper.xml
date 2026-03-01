@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.ForeachMapper">
+
+    <!-- IN句でのforeach -->
+    <select id="selectByIds" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <!-- バルクINSERT -->
+    <insert id="bulkInsert" parameterType="map">
+        INSERT INTO users (name, email)
+        VALUES
+        <foreach collection="userList" item="user" separator=",">
+            (#{user.name}, #{user.email})
+        </foreach>
+    </insert>
+
+    <!-- 複数条件のOR結合 -->
+    <select id="selectByMultipleConditions" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        WHERE
+        <foreach collection="conditions" item="cond" separator="OR">
+            (name = #{cond.name} AND email = #{cond.email})
+        </foreach>
+    </select>
+
+</mapper>

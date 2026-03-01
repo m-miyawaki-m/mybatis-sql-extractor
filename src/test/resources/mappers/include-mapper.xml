@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.IncludeMapper">
+
+    <!-- 再利用可能なSQL断片 -->
+    <sql id="userColumns">
+        id, name, email, created_at
+    </sql>
+
+    <sql id="activeCondition">
+        AND active = 1 AND deleted_at IS NULL
+    </sql>
+
+    <!-- include使用のSELECT -->
+    <select id="selectActiveUsers" resultType="map">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE 1=1
+        <include refid="activeCondition"/>
+        ORDER BY id
+    </select>
+
+    <!-- includeとifの組み合わせ -->
+    <select id="selectByNameWithInclude" parameterType="map" resultType="map">
+        SELECT
+        <include refid="userColumns"/>
+        FROM users
+        WHERE 1=1
+        <include refid="activeCondition"/>
+        <if test="name != null">
+            AND name LIKE #{name}
+        </if>
+    </select>
+
+</mapper>

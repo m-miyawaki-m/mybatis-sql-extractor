@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.DynamicMapper">
+
+    <!-- if条件 -->
+    <select id="selectByCondition" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        WHERE 1=1
+        <if test="name != null">
+            AND name = #{name}
+        </if>
+        <if test="email != null">
+            AND email = #{email}
+        </if>
+    </select>
+
+    <!-- where句（自動WHERE生成） -->
+    <select id="selectWithWhere" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        <where>
+            <if test="name != null">
+                AND name = #{name}
+            </if>
+            <if test="email != null">
+                AND email = #{email}
+            </if>
+        </where>
+    </select>
+
+    <!-- choose/when/otherwise -->
+    <select id="selectWithChoose" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        WHERE 1=1
+        <choose>
+            <when test="id != null">
+                AND id = #{id}
+            </when>
+            <when test="name != null">
+                AND name = #{name}
+            </when>
+            <otherwise>
+                AND active = 1
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- set句（UPDATEの動的SET） -->
+    <update id="updateSelective" parameterType="map">
+        UPDATE users
+        <set>
+            <if test="name != null">
+                name = #{name},
+            </if>
+            <if test="email != null">
+                email = #{email},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- trim句 -->
+    <select id="selectWithTrim" parameterType="map" resultType="map">
+        SELECT id, name, email
+        FROM users
+        <trim prefix="WHERE" prefixOverrides="AND |OR ">
+            <if test="name != null">
+                AND name = #{name}
+            </if>
+            <if test="email != null">
+                AND email = #{email}
+            </if>
+        </trim>
+    </select>
+
+</mapper>
