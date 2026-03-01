@@ -97,4 +97,58 @@ class SqlExtractorBranchTest {
         assertEquals(5, results.size());
         assertNull(results.get(0).getBranchPattern(), "Existing method should not set branchPattern");
     }
+
+    @Test
+    void testBranchExtractionWhereTag() throws IOException {
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractAllWithBranches(getMapperFile("dynamic-mapper.xml"));
+
+        List<SqlResult> selectWithWhere = results.stream()
+                .filter(r -> r.getId().equals("selectWithWhere"))
+                .toList();
+
+        // ALL_SET: WHERE name = ? AND email = ?
+        SqlResult allSet = selectWithWhere.stream()
+                .filter(r -> r.getBranchPattern() == BranchPattern.ALL_SET)
+                .findFirst().orElseThrow();
+        assertTrue(allSet.getSql().contains("WHERE"));
+
+        // ALL_NULL: WHERE clause absent (all <if> inside <where> are false, so <where> tag itself disappears)
+        SqlResult allNull = selectWithWhere.stream()
+                .filter(r -> r.getBranchPattern() == BranchPattern.ALL_NULL)
+                .findFirst().orElseThrow();
+        assertFalse(allNull.getSql().contains("WHERE"), "ALL_NULL should have no WHERE clause");
+    }
+
+    @Test
+    void testBranchExtractionSetTag() throws IOException {
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractAllWithBranches(getMapperFile("dynamic-mapper.xml"));
+
+        List<SqlResult> updateSelective = results.stream()
+                .filter(r -> r.getId().equals("updateSelective"))
+                .toList();
+
+        assertTrue(updateSelective.size() >= 1);
+        SqlResult allSet = updateSelective.stream()
+                .filter(r -> r.getBranchPattern() == BranchPattern.ALL_SET)
+                .findFirst().orElseThrow();
+        assertTrue(allSet.getSql().contains("SET"));
+    }
+
+    @Test
+    void testBranchExtractionDirectoryScan() throws IOException {
+        URL url = getClass().getClassLoader().getResource("mappers/");
+        assertNotNull(url);
+
+        File dir = new File(url.getFile());
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractFromDirectoryWithBranches(dir);
+
+        assertTrue(results.size() > 10, "Should have many results with branch patterns");
+
+        for (SqlResult r : results) {
+            assertNotNull(r.getBranchPattern(), "All branch results should have a pattern");
+        }
+    }
 }
