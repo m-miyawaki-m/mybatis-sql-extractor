@@ -2,6 +2,7 @@ package com.example.mybatis.extractor;
 
 import com.example.mybatis.config.MyBatisConfigBuilder;
 import com.example.mybatis.formatter.SqlFormatter;
+import com.example.mybatis.parameter.ClasspathTypeResolver;
 import com.example.mybatis.parameter.DummyParameterGenerator;
 import com.example.mybatis.parameter.NullParameterMap;
 import org.apache.ibatis.mapping.BoundSql;
@@ -34,9 +35,16 @@ import java.util.stream.Collectors;
 public class SqlExtractor {
 
     private final MyBatisConfigBuilder configBuilder;
+    private final ClasspathTypeResolver typeResolver;
 
     public SqlExtractor() {
         this.configBuilder = new MyBatisConfigBuilder();
+        this.typeResolver = null;
+    }
+
+    public SqlExtractor(ClasspathTypeResolver typeResolver) {
+        this.configBuilder = new MyBatisConfigBuilder();
+        this.typeResolver = typeResolver;
     }
 
     /**
