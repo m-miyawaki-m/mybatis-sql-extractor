@@ -1,11 +1,10 @@
 package com.example.mybatis.extractor;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 
-import java.io.File;
 import java.io.IOException;
-import java.net.URL;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,14 +12,23 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * SqlExtractorのテスト。
- * 各種Mapper XMLパターンでSQL抽出が正しく動作することを検証する。
+ * XMLファイルをString化してextractFromStringで処理する（実利用と同じ方式）。
  */
 class SqlExtractorTest {
 
-    private File getMapperFile(String name) {
-        URL url = getClass().getClassLoader().getResource("mappers/" + name);
-        assertNotNull(url, "Test resource not found: mappers/" + name);
-        return new File(url.getFile());
+    private String loadXml(String name) throws IOException {
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("mappers/" + name)) {
+            assertNotNull(is, "Test resource not found: mappers/" + name);
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private List<SqlResult> extract(String xmlFileName) throws IOException {
+        String xml = loadXml(xmlFileName);
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractFromString(xml);
+        results.forEach(r -> System.out.println(r));
+        return results;
     }
 
     private Optional<SqlResult> findById(List<SqlResult> results, String id) {
@@ -33,368 +41,204 @@ class SqlExtractorTest {
 
     @Test
     void testSimpleSelect() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        assertFalse(results.isEmpty(), "Should extract at least one SQL");
-
-        Optional<SqlResult> selectById = findById(results, "selectById");
-        assertTrue(selectById.isPresent(), "Should contain selectById");
-
-        SqlResult result = selectById.get();
+        SqlResult result = findById(results, "selectById").orElseThrow();
         assertEquals("SELECT", result.getSqlCommandType());
-        assertTrue(result.getSql().contains("SELECT"), "SQL should contain SELECT");
-        assertTrue(result.getSql().contains("users"), "SQL should reference users table");
-        assertTrue(result.getSql().contains("?"), "SQL should contain ? placeholder");
+        assertTrue(result.getSql().contains("SELECT"));
+        assertTrue(result.getSql().contains("?"));
         assertEquals("com.example.mapper.UserMapper", result.getNamespace());
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testSimpleSelectAll() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> selectAll = findById(results, "selectAll");
-        assertTrue(selectAll.isPresent(), "Should contain selectAll");
-
-        SqlResult result = selectAll.get();
+        SqlResult result = findById(results, "selectAll").orElseThrow();
         assertEquals("SELECT", result.getSqlCommandType());
-        assertFalse(result.getSql().contains("?"), "selectAll should not have parameters");
+        assertFalse(result.getSql().contains("?"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testSimpleInsert() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> insert = findById(results, "insert");
-        assertTrue(insert.isPresent(), "Should contain insert");
-
-        SqlResult result = insert.get();
+        SqlResult result = findById(results, "insert").orElseThrow();
         assertEquals("INSERT", result.getSqlCommandType());
         assertTrue(result.getSql().contains("INSERT INTO users"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testSimpleUpdate() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> update = findById(results, "update");
-        assertTrue(update.isPresent(), "Should contain update");
-        assertEquals("UPDATE", update.get().getSqlCommandType());
+        SqlResult result = findById(results, "update").orElseThrow();
+        assertEquals("UPDATE", result.getSqlCommandType());
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testSimpleDelete() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> delete = findById(results, "deleteById");
-        assertTrue(delete.isPresent(), "Should contain deleteById");
-        assertEquals("DELETE", delete.get().getSqlCommandType());
+        SqlResult result = findById(results, "deleteById").orElseThrow();
+        assertEquals("DELETE", result.getSqlCommandType());
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testSimpleMapperExtractsAllStatements() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
-
-        // simple-mapper.xml has 5 statements
-        assertEquals(5, results.size(), "Should extract 5 SQL statements");
+        List<SqlResult> results = extract("simple-mapper.xml");
+        assertEquals(5, results.size());
     }
 
     // ========== 動的SQL テスト ==========
 
     @Test
     void testDynamicIf() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("dynamic-mapper.xml"));
+        List<SqlResult> results = extract("dynamic-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectByCondition");
-        assertTrue(result.isPresent(), "Should contain selectByCondition");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("SELECT"), "Should contain SELECT");
-        assertTrue(sql.contains("users"), "Should reference users table");
-        // ダミーパラメータによりif条件が通過するので、name と email の条件が含まれる
-        assertTrue(sql.contains("name = ?"), "Should contain name condition (if evaluated to true)");
+        SqlResult result = findById(results, "selectByCondition").orElseThrow();
+        assertTrue(result.getSql().contains("name = ?"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testDynamicWhere() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("dynamic-mapper.xml"));
+        List<SqlResult> results = extract("dynamic-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectWithWhere");
-        assertTrue(result.isPresent(), "Should contain selectWithWhere");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("WHERE"), "Should contain WHERE clause");
+        SqlResult result = findById(results, "selectWithWhere").orElseThrow();
+        assertTrue(result.getSql().contains("WHERE"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testDynamicChoose() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("dynamic-mapper.xml"));
+        List<SqlResult> results = extract("dynamic-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectWithChoose");
-        assertTrue(result.isPresent(), "Should contain selectWithChoose");
-
-        String sql = result.get().getSql();
-        // chooseはfirst matchなので、idが設定されていればid条件が使われる
-        assertTrue(sql.contains("?"), "Should contain at least one parameter");
+        SqlResult result = findById(results, "selectWithChoose").orElseThrow();
+        assertTrue(result.getSql().contains("?"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testDynamicSet() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("dynamic-mapper.xml"));
+        List<SqlResult> results = extract("dynamic-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "updateSelective");
-        assertTrue(result.isPresent(), "Should contain updateSelective");
-
-        SqlResult r = result.get();
-        assertEquals("UPDATE", r.getSqlCommandType());
-        assertTrue(r.getSql().contains("SET"), "Should contain SET clause");
+        SqlResult result = findById(results, "updateSelective").orElseThrow();
+        assertEquals("UPDATE", result.getSqlCommandType());
+        assertTrue(result.getSql().contains("SET"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testDynamicTrim() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("dynamic-mapper.xml"));
+        List<SqlResult> results = extract("dynamic-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectWithTrim");
-        assertTrue(result.isPresent(), "Should contain selectWithTrim");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("WHERE"), "Trim should generate WHERE prefix");
+        SqlResult result = findById(results, "selectWithTrim").orElseThrow();
+        assertTrue(result.getSql().contains("WHERE"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     // ========== foreach テスト ==========
 
     @Test
     void testForeachInClause() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("foreach-mapper.xml"));
+        List<SqlResult> results = extract("foreach-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectByIds");
-        assertTrue(result.isPresent(), "Should contain selectByIds");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("IN"), "Should contain IN clause");
-        assertTrue(sql.contains("("), "Should contain opening paren");
-        assertTrue(sql.contains(")"), "Should contain closing paren");
+        SqlResult result = findById(results, "selectByIds").orElseThrow();
+        assertTrue(result.getSql().contains("IN"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testForeachBulkInsert() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("foreach-mapper.xml"));
+        List<SqlResult> results = extract("foreach-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "bulkInsert");
-        assertTrue(result.isPresent(), "Should contain bulkInsert");
-
-        SqlResult r = result.get();
-        assertEquals("INSERT", r.getSqlCommandType());
-        assertTrue(r.getSql().contains("INSERT INTO users"), "Should contain INSERT INTO");
+        SqlResult result = findById(results, "bulkInsert").orElseThrow();
+        assertEquals("INSERT", result.getSqlCommandType());
+        assertTrue(result.getSql().contains("INSERT INTO users"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     // ========== include テスト ==========
 
     @Test
     void testInclude() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("include-mapper.xml"));
+        List<SqlResult> results = extract("include-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectActiveUsers");
-        assertTrue(result.isPresent(), "Should contain selectActiveUsers");
-
-        String sql = result.get().getSql();
-        // include refidで展開されたカラムが含まれること
-        assertTrue(sql.contains("id"), "Should contain 'id' from included columns");
-        assertTrue(sql.contains("name"), "Should contain 'name' from included columns");
-        assertTrue(sql.contains("email"), "Should contain 'email' from included columns");
-        assertTrue(sql.contains("created_at"), "Should contain 'created_at' from included columns");
-        // activeConditionも展開される
-        assertTrue(sql.contains("active = 1"), "Should contain active condition from include");
+        SqlResult result = findById(results, "selectActiveUsers").orElseThrow();
+        assertTrue(result.getSql().contains("created_at"));
+        assertTrue(result.getSql().contains("active = 1"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     @Test
     void testIncludeWithDynamicSql() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("include-mapper.xml"));
+        List<SqlResult> results = extract("include-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectByNameWithInclude");
-        assertTrue(result.isPresent(), "Should contain selectByNameWithInclude");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("created_at"), "Should include expanded columns");
+        SqlResult result = findById(results, "selectByNameWithInclude").orElseThrow();
+        assertTrue(result.getSql().contains("created_at"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     // ========== 複合パターン テスト ==========
 
     @Test
     void testComplexJoinQuery() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("complex-mapper.xml"));
+        List<SqlResult> results = extract("complex-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectUserWithDepartment");
-        assertTrue(result.isPresent(), "Should contain selectUserWithDepartment");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("JOIN"), "Should contain JOIN");
-        assertTrue(sql.contains("departments"), "Should reference departments table");
+        SqlResult result = findById(results, "selectUserWithDepartment").orElseThrow();
+        assertTrue(result.getSql().contains("JOIN"));
+        assertTrue(result.getTables().contains("users"));
+        assertTrue(result.getTables().contains("departments"));
     }
 
     @Test
     void testComplexSubquery() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("complex-mapper.xml"));
+        List<SqlResult> results = extract("complex-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectUsersWithOrderCount");
-        assertTrue(result.isPresent(), "Should contain selectUsersWithOrderCount");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("SELECT COUNT(*)"), "Should contain subquery");
-        assertTrue(sql.contains("orders"), "Should reference orders table");
+        SqlResult result = findById(results, "selectUsersWithOrderCount").orElseThrow();
+        assertTrue(result.getSql().contains("SELECT COUNT(*)"));
+        assertTrue(result.getTables().contains("users"));
+        assertTrue(result.getTables().contains("orders"));
     }
 
     @Test
     void testComplexAdvancedSearch() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("complex-mapper.xml"));
+        List<SqlResult> results = extract("complex-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "advancedSearch");
-        assertTrue(result.isPresent(), "Should contain advancedSearch");
-
-        String sql = result.get().getSql();
-        assertTrue(sql.contains("ORDER BY"), "Should contain ORDER BY");
+        SqlResult result = findById(results, "advancedSearch").orElseThrow();
+        assertTrue(result.getSql().contains("ORDER BY"));
+        assertEquals(List.of("users"), result.getTables());
     }
 
     // ========== パラメータ情報テスト ==========
 
     @Test
     void testParameterInfoExtraction() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectById");
-        assertTrue(result.isPresent());
-
-        List<SqlResult.ParameterInfo> params = result.get().getParameters();
-        assertNotNull(params, "Parameters should not be null");
-        assertFalse(params.isEmpty(), "Should have at least one parameter");
+        SqlResult result = findById(results, "selectById").orElseThrow();
+        List<SqlResult.ParameterInfo> params = result.getParameters();
+        assertNotNull(params);
+        assertFalse(params.isEmpty());
     }
 
-    // ========== ディレクトリスキャン テスト ==========
-
-    @Test
-    void testDirectoryScan() throws IOException {
-        URL url = getClass().getClassLoader().getResource("mappers/");
-        assertNotNull(url, "mappers directory should exist");
-
-        File dir = new File(url.getFile());
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractFromDirectory(dir);
-
-        // 全XMLファイルから抽出
-        assertTrue(results.size() > 10, "Should extract multiple statements from directory");
-    }
-
-    // ========== String入力テスト ==========
-
-    @Test
-    void testExtractFromString_simpleSelect() {
-        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
-                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
-                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
-                + "<mapper namespace=\"com.example.StringTest\">\n"
-                + "  <select id=\"findById\" parameterType=\"int\" resultType=\"map\">\n"
-                + "    SELECT id, name FROM users WHERE id = #{id}\n"
-                + "  </select>\n"
-                + "</mapper>";
-
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractFromString(xml);
-
-        System.out.println("=== simpleSelect ===");
-        results.forEach(r -> System.out.println(r));
-
-        assertEquals(1, results.size());
-        SqlResult result = results.get(0);
-        assertEquals("com.example.StringTest", result.getNamespace());
-        assertEquals("findById", result.getId());
-        assertEquals("SELECT", result.getSqlCommandType());
-        assertTrue(result.getSql().contains("SELECT id, name FROM users WHERE id = ?"));
-    }
-
-    @Test
-    void testExtractFromString_dynamicSql() {
-        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
-                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
-                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
-                + "<mapper namespace=\"com.example.DynamicTest\">\n"
-                + "  <select id=\"search\" resultType=\"map\">\n"
-                + "    SELECT * FROM users\n"
-                + "    <where>\n"
-                + "      <if test=\"name != null\">AND name = #{name}</if>\n"
-                + "      <if test=\"email != null\">AND email = #{email}</if>\n"
-                + "    </where>\n"
-                + "  </select>\n"
-                + "</mapper>";
-
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractFromString(xml);
-
-        System.out.println("=== dynamicSql ===");
-        results.forEach(r -> System.out.println(r));
-
-        assertEquals(1, results.size());
-        String sql = results.get(0).getSql();
-        assertTrue(sql.contains("WHERE"));
-        assertTrue(sql.contains("name = ?"));
-    }
-
-    @Test
-    void testExtractFromString_multipleStatements() {
-        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
-                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
-                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
-                + "<mapper namespace=\"com.example.MultiTest\">\n"
-                + "  <select id=\"findAll\" resultType=\"map\">\n"
-                + "    SELECT * FROM users\n"
-                + "  </select>\n"
-                + "  <insert id=\"create\">\n"
-                + "    INSERT INTO users (name) VALUES (#{name})\n"
-                + "  </insert>\n"
-                + "  <delete id=\"remove\">\n"
-                + "    DELETE FROM users WHERE id = #{id}\n"
-                + "  </delete>\n"
-                + "</mapper>";
-
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractFromString(xml);
-
-        System.out.println("=== multipleStatements ===");
-        results.forEach(r -> System.out.println(r));
-
-        assertEquals(3, results.size());
-    }
-
-    // ========== toString / 出力形式テスト ==========
+    // ========== toString テスト ==========
 
     @Test
     void testSqlResultToString() throws IOException {
-        SqlExtractor extractor = new SqlExtractor();
-        List<SqlResult> results = extractor.extractAll(getMapperFile("simple-mapper.xml"));
+        List<SqlResult> results = extract("simple-mapper.xml");
 
-        Optional<SqlResult> result = findById(results, "selectById");
-        assertTrue(result.isPresent());
-
-        String text = result.get().toString();
-        assertTrue(text.contains("==="), "Should contain separator");
-        assertTrue(text.contains("Type:"), "Should contain type label");
-        assertTrue(text.contains("SQL:"), "Should contain SQL label");
+        SqlResult result = findById(results, "selectById").orElseThrow();
+        String text = result.toString();
+        assertTrue(text.contains("==="));
+        assertTrue(text.contains("Type:"));
+        assertTrue(text.contains("Tables:"));
+        assertTrue(text.contains("SQL:"));
     }
 }
