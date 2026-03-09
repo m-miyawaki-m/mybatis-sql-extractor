@@ -2,6 +2,7 @@
 build/
 *.class
 *.jar
+!libs/*.jar
 *.log
 .idea/
 *.iml
