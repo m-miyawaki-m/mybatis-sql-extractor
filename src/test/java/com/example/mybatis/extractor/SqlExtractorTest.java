@@ -318,6 +318,9 @@ class SqlExtractorTest {
         SqlExtractor extractor = new SqlExtractor();
         List<SqlResult> results = extractor.extractFromString(xml);
 
+        System.out.println("=== simpleSelect ===");
+        results.forEach(r -> System.out.println(r));
+
         assertEquals(1, results.size());
         SqlResult result = results.get(0);
         assertEquals("com.example.StringTest", result.getNamespace());
@@ -344,6 +347,9 @@ class SqlExtractorTest {
         SqlExtractor extractor = new SqlExtractor();
         List<SqlResult> results = extractor.extractFromString(xml);
 
+        System.out.println("=== dynamicSql ===");
+        results.forEach(r -> System.out.println(r));
+
         assertEquals(1, results.size());
         String sql = results.get(0).getSql();
         assertTrue(sql.contains("WHERE"));
@@ -369,6 +375,9 @@ class SqlExtractorTest {
 
         SqlExtractor extractor = new SqlExtractor();
         List<SqlResult> results = extractor.extractFromString(xml);
+
+        System.out.println("=== multipleStatements ===");
+        results.forEach(r -> System.out.println(r));
 
         assertEquals(3, results.size());
     }
