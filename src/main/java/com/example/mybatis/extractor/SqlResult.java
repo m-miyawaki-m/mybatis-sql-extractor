@@ -1,6 +1,9 @@
 package com.example.mybatis.extractor;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Mapper XMLから抽出されたSQL文の結果を保持するデータクラス。
@@ -12,7 +15,7 @@ public class SqlResult {
     private final String sqlCommandType;
     private final String sql;
     private final List<ParameterInfo> parameters;
-    private final List<String> tables;
+    private final List<TableUsage> tableUsages;
 
     public SqlResult(String namespace, String id, String sqlCommandType, String sql, List<ParameterInfo> parameters) {
         this.namespace = namespace;
@@ -20,7 +23,7 @@ public class SqlResult {
         this.sqlCommandType = sqlCommandType;
         this.sql = sql;
         this.parameters = parameters;
-        this.tables = TableExtractor.extractTables(sql);
+        this.tableUsages = TableExtractor.extractTableUsages(sql);
     }
 
     public String getNamespace() {
@@ -43,8 +46,18 @@ public class SqlResult {
         return parameters;
     }
 
+    public List<TableUsage> getTableUsages() {
+        return tableUsages;
+    }
+
+    /**
+     * テーブル名のみのリストを返す（後方互換）。
+     */
     public List<String> getTables() {
-        return tables;
+        return tableUsages.stream()
+                .map(TableUsage::getTableName)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     public String getFullId() {
@@ -94,7 +107,13 @@ public class SqlResult {
         StringBuilder sb = new StringBuilder();
         sb.append("=== ").append(getFullId()).append(" ===\n");
         sb.append("Type: ").append(sqlCommandType).append("\n");
-        sb.append("Tables: ").append(tables).append("\n");
+        sb.append("Tables:\n");
+        Map<String, List<String>> grouped = tableUsages.stream()
+                .collect(Collectors.groupingBy(
+                        TableUsage::getOperation,
+                        LinkedHashMap::new,
+                        Collectors.mapping(TableUsage::getTableName, Collectors.toList())));
+        grouped.forEach((op, tables) -> sb.append("  ").append(op).append(": ").append(tables).append("\n"));
         sb.append("SQL:\n  ").append(sql.replace("\n", "\n  ")).append("\n");
         if (parameters != null && !parameters.isEmpty()) {
             sb.append("Parameters: ").append(parameters).append("\n");

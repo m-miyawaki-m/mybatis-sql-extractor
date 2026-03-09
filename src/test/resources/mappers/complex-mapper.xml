@@ -84,4 +84,18 @@
         </choose>
     </select>
 
+    <!-- INSERT SELECT -->
+    <insert id="archiveInactiveUsers" parameterType="map">
+        INSERT INTO user_archive (id, name, email, archived_at)
+        SELECT u.id, u.name, u.email, NOW()
+        FROM users u
+        LEFT JOIN orders o ON u.id = o.user_id
+        <where>
+            <if test="inactiveDays != null">
+                AND u.last_login &lt; DATE_SUB(NOW(), INTERVAL #{inactiveDays} DAY)
+            </if>
+            AND o.user_id IS NULL
+        </where>
+    </insert>
+
 </mapper>

@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -214,6 +215,33 @@ class SqlExtractorTest {
         SqlResult result = findById(results, "advancedSearch").orElseThrow();
         assertTrue(result.getSql().contains("ORDER BY"));
         assertEquals(List.of("users"), result.getTables());
+    }
+
+    @Test
+    void testInsertSelect() throws IOException {
+        List<SqlResult> results = extract("complex-mapper.xml");
+
+        SqlResult result = findById(results, "archiveInactiveUsers").orElseThrow();
+        assertEquals("INSERT", result.getSqlCommandType());
+        assertTrue(result.getSql().contains("INSERT INTO user_archive"));
+        assertTrue(result.getSql().contains("SELECT"));
+
+        // テーブル名の検証
+        assertTrue(result.getTables().contains("user_archive"), "Should contain INSERT target");
+        assertTrue(result.getTables().contains("users"), "Should contain SELECT source");
+        assertTrue(result.getTables().contains("orders"), "Should contain JOIN table");
+
+        // 操作別テーブルの検証
+        List<TableUsage> usages = result.getTableUsages();
+        List<String> insertTables = usages.stream()
+                .filter(u -> u.getOperation().equals("INSERT"))
+                .map(TableUsage::getTableName).collect(Collectors.toList());
+        List<String> selectTables = usages.stream()
+                .filter(u -> u.getOperation().equals("SELECT"))
+                .map(TableUsage::getTableName).collect(Collectors.toList());
+        assertEquals(List.of("user_archive"), insertTables);
+        assertTrue(selectTables.contains("users"));
+        assertTrue(selectTables.contains("orders"));
     }
 
     // ========== パラメータ情報テスト ==========
