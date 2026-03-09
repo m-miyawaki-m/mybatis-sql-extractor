@@ -302,6 +302,77 @@ class SqlExtractorTest {
         assertTrue(results.size() > 10, "Should extract multiple statements from directory");
     }
 
+    // ========== String入力テスト ==========
+
+    @Test
+    void testExtractFromString_simpleSelect() {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
+                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
+                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
+                + "<mapper namespace=\"com.example.StringTest\">\n"
+                + "  <select id=\"findById\" parameterType=\"int\" resultType=\"map\">\n"
+                + "    SELECT id, name FROM users WHERE id = #{id}\n"
+                + "  </select>\n"
+                + "</mapper>";
+
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractFromString(xml);
+
+        assertEquals(1, results.size());
+        SqlResult result = results.get(0);
+        assertEquals("com.example.StringTest", result.getNamespace());
+        assertEquals("findById", result.getId());
+        assertEquals("SELECT", result.getSqlCommandType());
+        assertTrue(result.getSql().contains("SELECT id, name FROM users WHERE id = ?"));
+    }
+
+    @Test
+    void testExtractFromString_dynamicSql() {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
+                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
+                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
+                + "<mapper namespace=\"com.example.DynamicTest\">\n"
+                + "  <select id=\"search\" resultType=\"map\">\n"
+                + "    SELECT * FROM users\n"
+                + "    <where>\n"
+                + "      <if test=\"name != null\">AND name = #{name}</if>\n"
+                + "      <if test=\"email != null\">AND email = #{email}</if>\n"
+                + "    </where>\n"
+                + "  </select>\n"
+                + "</mapper>";
+
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractFromString(xml);
+
+        assertEquals(1, results.size());
+        String sql = results.get(0).getSql();
+        assertTrue(sql.contains("WHERE"));
+        assertTrue(sql.contains("name = ?"));
+    }
+
+    @Test
+    void testExtractFromString_multipleStatements() {
+        String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
+                + "<!DOCTYPE mapper PUBLIC \"-//mybatis.org//DTD Mapper 3.0//EN\"\n"
+                + "  \"http://mybatis.org/dtd/mybatis-3-mapper.dtd\">\n"
+                + "<mapper namespace=\"com.example.MultiTest\">\n"
+                + "  <select id=\"findAll\" resultType=\"map\">\n"
+                + "    SELECT * FROM users\n"
+                + "  </select>\n"
+                + "  <insert id=\"create\">\n"
+                + "    INSERT INTO users (name) VALUES (#{name})\n"
+                + "  </insert>\n"
+                + "  <delete id=\"remove\">\n"
+                + "    DELETE FROM users WHERE id = #{id}\n"
+                + "  </delete>\n"
+                + "</mapper>";
+
+        SqlExtractor extractor = new SqlExtractor();
+        List<SqlResult> results = extractor.extractFromString(xml);
+
+        assertEquals(3, results.size());
+    }
+
     // ========== toString / 出力形式テスト ==========
 
     @Test

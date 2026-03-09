@@ -10,8 +10,11 @@ import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.scripting.xmltags.DynamicSqlSource;
 import org.apache.ibatis.session.Configuration;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -36,6 +39,19 @@ public class SqlExtractor {
 
     public SqlExtractor() {
         this.configBuilder = new MyBatisConfigBuilder();
+    }
+
+    /**
+     * XML文字列からSQL文を抽出する。
+     *
+     * @param xml Mapper XMLの文字列
+     * @return 抽出されたSQLのリスト
+     */
+    public List<SqlResult> extractFromString(String xml) {
+        InputStream inputStream = new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
+        configBuilder.addMapper(inputStream, "string-input");
+        Configuration configuration = configBuilder.getConfiguration();
+        return extractFromConfiguration(configuration);
     }
 
     /**
