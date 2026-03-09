@@ -3,12 +3,15 @@ package com.example.mybatis;
 import com.example.mybatis.extractor.SqlExtractor;
 import com.example.mybatis.extractor.SqlResult;
 import com.example.mybatis.formatter.SqlFormatter;
+import com.example.mybatis.parameter.ClasspathTypeResolver;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * MyBatis SQL Extractor のCLIエントリーポイント。
@@ -34,6 +37,8 @@ public class Main {
         String outputPath = null;
         String format = "text";
         boolean formatted = false;
+        String classpath = null;
+        boolean branches = false;
 
         // コマンドライン引数の解析
         for (int i = 0; i < args.length; i++) {
@@ -52,6 +57,14 @@ public class Main {
                     break;
                 case "--formatted":
                     formatted = true;
+                    break;
+                case "--classpath":
+                case "-cp":
+                    if (i + 1 < args.length) classpath = args[++i];
+                    break;
+                case "--branches":
+                case "-b":
+                    branches = true;
                     break;
                 case "--help":
                 case "-h":
@@ -79,13 +92,27 @@ public class Main {
                 System.exit(1);
             }
 
-            SqlExtractor extractor = new SqlExtractor();
+            ClasspathTypeResolver typeResolver = null;
+            if (classpath != null) {
+                typeResolver = new ClasspathTypeResolver();
+                typeResolver.setClasspath(Arrays.asList(classpath.split(File.pathSeparator)));
+            }
+
+            SqlExtractor extractor = typeResolver != null ? new SqlExtractor(typeResolver) : new SqlExtractor();
             List<SqlResult> results;
 
-            if (input.isDirectory()) {
-                results = extractor.extractFromDirectory(input);
+            if (branches) {
+                if (input.isDirectory()) {
+                    results = extractor.extractFromDirectoryWithBranches(input);
+                } else {
+                    results = extractor.extractAllWithBranches(input);
+                }
             } else {
-                results = extractor.extractAll(input);
+                if (input.isDirectory()) {
+                    results = extractor.extractFromDirectory(input);
+                } else {
+                    results = extractor.extractAll(input);
+                }
             }
 
             // 出力
@@ -116,7 +143,11 @@ public class Main {
     private static String toText(List<SqlResult> results, boolean formatted) {
         StringBuilder sb = new StringBuilder();
         for (SqlResult result : results) {
-            sb.append("=== ").append(result.getFullId()).append(" ===\n");
+            sb.append("=== ").append(result.getFullId());
+            if (result.getBranchPattern() != null) {
+                sb.append(" [").append(result.getBranchPattern().name()).append("]");
+            }
+            sb.append(" ===\n");
             sb.append("Type: ").append(result.getSqlCommandType()).append("\n");
             sb.append("SQL:\n");
 
@@ -127,6 +158,9 @@ public class Main {
 
             if (result.getParameters() != null && !result.getParameters().isEmpty()) {
                 sb.append("Parameters: ").append(result.getParameters()).append("\n");
+            }
+            if (result.getParameterValues() != null && !result.getParameterValues().isEmpty()) {
+                sb.append("Parameter Values: ").append(result.getParameterValues()).append("\n");
             }
             sb.append("\n");
         }
@@ -142,6 +176,9 @@ public class Main {
             sb.append("    \"namespace\": \"").append(escapeJson(r.getNamespace())).append("\",\n");
             sb.append("    \"id\": \"").append(escapeJson(r.getId())).append("\",\n");
             sb.append("    \"type\": \"").append(r.getSqlCommandType()).append("\",\n");
+            if (r.getBranchPattern() != null) {
+                sb.append("    \"branchPattern\": \"").append(r.getBranchPattern().name()).append("\",\n");
+            }
             sb.append("    \"sql\": \"").append(escapeJson(r.getSql())).append("\",\n");
             sb.append("    \"parameters\": [");
 
@@ -164,7 +201,26 @@ public class Main {
                 }
                 sb.append("    ");
             }
-            sb.append("]\n");
+            sb.append("]");
+            if (r.getParameterValues() != null && !r.getParameterValues().isEmpty()) {
+                sb.append(",\n    \"parameterValues\": {");
+                int pvIdx = 0;
+                for (Map.Entry<String, Object> entry : r.getParameterValues().entrySet()) {
+                    if (pvIdx > 0) sb.append(",");
+                    sb.append("\n      \"").append(escapeJson(entry.getKey())).append("\": ");
+                    Object val = entry.getValue();
+                    if (val instanceof String) {
+                        sb.append("\"").append(escapeJson(val.toString())).append("\"");
+                    } else if (val == null) {
+                        sb.append("null");
+                    } else {
+                        sb.append(val);
+                    }
+                    pvIdx++;
+                }
+                sb.append("\n    }");
+            }
+            sb.append("\n");
             sb.append("  }");
             if (i < results.size() - 1) sb.append(",");
             sb.append("\n");
@@ -192,6 +248,8 @@ public class Main {
         System.out.println("  --output, -o <path>   Output file (default: stdout)");
         System.out.println("  --format, -f <type>   Output format: text (default), json");
         System.out.println("  --formatted           Format SQL with indentation");
+        System.out.println("  --branches, -b        Enable branch coverage output (ALL_SET/ALL_NULL patterns)");
+        System.out.println("  --classpath, -cp <path> Classpath for parameterType/resultType resolution (: separated)");
         System.out.println("  --help, -h            Show this help message");
     }
 }
