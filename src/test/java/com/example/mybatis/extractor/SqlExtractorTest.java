@@ -244,6 +244,35 @@ class SqlExtractorTest {
         assertTrue(selectTables.contains("orders"));
     }
 
+    // ========== SQL行数テスト ==========
+
+    @Test
+    void testSqlLines_simpleSelect() throws IOException {
+        List<SqlResult> results = extract("simple-mapper.xml");
+
+        // SELECT id, name, email / FROM users / WHERE id = #{id} → 3行
+        SqlResult result = findById(results, "selectById").orElseThrow();
+        assertTrue(result.getSqlLines() > 0);
+    }
+
+    @Test
+    void testSqlLines_complexJoin() throws IOException {
+        List<SqlResult> results = extract("complex-mapper.xml");
+
+        // JOINクエリはシンプルSELECTより行数が多い
+        SqlResult join = findById(results, "selectUserWithDepartment").orElseThrow();
+        SqlResult simple = extract("simple-mapper.xml").stream()
+                .filter(r -> r.getId().equals("selectAll")).findFirst().orElseThrow();
+        assertTrue(join.getSqlLines() > simple.getSqlLines());
+    }
+
+    @Test
+    void testSqlLines_appearsInToString() throws IOException {
+        List<SqlResult> results = extract("simple-mapper.xml");
+        SqlResult result = findById(results, "selectById").orElseThrow();
+        assertTrue(result.toString().contains("Lines:"));
+    }
+
     // ========== パラメータ情報テスト ==========
 
     @Test

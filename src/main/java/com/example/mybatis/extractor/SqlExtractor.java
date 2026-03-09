@@ -165,7 +165,12 @@ public class SqlExtractor {
                 ))
                 .collect(Collectors.toList());
 
-        return new SqlResult(namespace, id, commandType, formattedSql, paramInfos);
+        // rawSqlの有効行数をカウント（空行・空白のみの行を除外）
+        int sqlLines = (int) rawSql.lines()
+                .filter(line -> !line.trim().isEmpty())
+                .count();
+
+        return new SqlResult(namespace, id, commandType, formattedSql, paramInfos, sqlLines);
     }
 
     /**

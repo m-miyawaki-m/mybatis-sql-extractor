@@ -16,14 +16,20 @@ public class SqlResult {
     private final String sql;
     private final List<ParameterInfo> parameters;
     private final List<TableUsage> tableUsages;
+    private final int sqlLines;
 
     public SqlResult(String namespace, String id, String sqlCommandType, String sql, List<ParameterInfo> parameters) {
+        this(namespace, id, sqlCommandType, sql, parameters, 0);
+    }
+
+    public SqlResult(String namespace, String id, String sqlCommandType, String sql, List<ParameterInfo> parameters, int sqlLines) {
         this.namespace = namespace;
         this.id = id;
         this.sqlCommandType = sqlCommandType;
         this.sql = sql;
         this.parameters = parameters;
         this.tableUsages = TableExtractor.extractTableUsages(sql);
+        this.sqlLines = sqlLines;
     }
 
     public String getNamespace() {
@@ -58,6 +64,10 @@ public class SqlResult {
                 .map(TableUsage::getTableName)
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    public int getSqlLines() {
+        return sqlLines;
     }
 
     public String getFullId() {
@@ -107,6 +117,7 @@ public class SqlResult {
         StringBuilder sb = new StringBuilder();
         sb.append("=== ").append(getFullId()).append(" ===\n");
         sb.append("Type: ").append(sqlCommandType).append("\n");
+        sb.append("Lines: ").append(sqlLines).append("\n");
         sb.append("Tables:\n");
         Map<String, List<String>> grouped = tableUsages.stream()
                 .collect(Collectors.groupingBy(
