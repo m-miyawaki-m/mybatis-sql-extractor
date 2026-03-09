@@ -6,14 +6,10 @@ group = 'com.example'
 version = '1.0.0'
 sourceCompatibility = '11'
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
-    implementation 'org.mybatis:mybatis:3.5.16'
+    implementation fileTree(dir: 'libs', include: ['mybatis-*.jar', 'jsqlparser-*.jar'])
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation fileTree(dir: 'libs', include: ['junit-*.jar', 'opentest4j-*.jar'])
 }
 
 test {

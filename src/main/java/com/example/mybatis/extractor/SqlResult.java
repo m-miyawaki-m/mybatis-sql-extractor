@@ -12,6 +12,7 @@ public class SqlResult {
     private final String sqlCommandType;
     private final String sql;
     private final List<ParameterInfo> parameters;
+    private final List<String> tables;
 
     public SqlResult(String namespace, String id, String sqlCommandType, String sql, List<ParameterInfo> parameters) {
         this.namespace = namespace;
@@ -19,6 +20,7 @@ public class SqlResult {
         this.sqlCommandType = sqlCommandType;
         this.sql = sql;
         this.parameters = parameters;
+        this.tables = TableExtractor.extractTables(sql);
     }
 
     public String getNamespace() {
@@ -39,6 +41,10 @@ public class SqlResult {
 
     public List<ParameterInfo> getParameters() {
         return parameters;
+    }
+
+    public List<String> getTables() {
+        return tables;
     }
 
     public String getFullId() {
@@ -88,6 +94,7 @@ public class SqlResult {
         StringBuilder sb = new StringBuilder();
         sb.append("=== ").append(getFullId()).append(" ===\n");
         sb.append("Type: ").append(sqlCommandType).append("\n");
+        sb.append("Tables: ").append(tables).append("\n");
         sb.append("SQL:\n  ").append(sql.replace("\n", "\n  ")).append("\n");
         if (parameters != null && !parameters.isEmpty()) {
             sb.append("Parameters: ").append(parameters).append("\n");
